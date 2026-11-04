@@ -1,0 +1,23 @@
+name: metapi_m
+description: MetapiM iOS companion for self-hosted Metapi servers.
+publish_to: none
+version: 0.0.1+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^9.2.4
+  webview_flutter: ^4.10.0
+  home_widget: ^0.7.0
+  http: ^1.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

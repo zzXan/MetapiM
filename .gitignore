@@ -1,0 +1,17 @@
+.dart_tool/
+.packages
+.pub-cache/
+build/
+output/
+.flutter-plugins
+.flutter-plugins-dependencies
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+*.ipa
+*.p12
+*.mobileprovision
+.env
