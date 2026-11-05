@@ -43,6 +43,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         final data = jsonDecode(raw) as Map<String, dynamic>;
         address.text = data['server'] as String;
         password.text = data['token'] as String;
+        final server = ServerAddress.parse(address.text);
+        final token = password.text;
+        if (mounted) {
+          await Navigator.of(context).push(MaterialPageRoute<void>(
+            builder: (_) => ServerScreen(server: server, token: token)));
+          password.clear();
+        }
       }
     } catch (_) { error = '无法读取已保存连接，请重新登录'; }
     if (mounted) setState(() => restoring = false);
@@ -94,6 +101,7 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
   late final WebViewController controller;
   bool loading = true;
   bool refreshing = false;
+  bool loggingOut = false;
   String? error;
   DateTime lastForeground = DateTime.fromMillisecondsSinceEpoch(0);
   bool sessionInjected = false;
@@ -146,12 +154,16 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
     await HomeWidget.setAppGroupId(group);
   }
   Future<void> refreshWidget() async {
-    if (refreshing) return;
+    if (refreshing || loggingOut) return;
     refreshing = true;
     final client = MetapiClient(server: widget.server, token: widget.token);
     try {
-      final snapshot = await client.loadWidgetSnapshot().timeout(const Duration(seconds: 30));
       await configureSharedGroup();
+      await const MethodChannel('metapim/shared-group').invokeMethod<void>('saveSession', {
+        'server': widget.server.toString(), 'token': widget.token,
+      });
+      final snapshot = await client.loadWidgetSnapshot().timeout(const Duration(seconds: 30));
+      if (loggingOut || !mounted) return;
       final encoded = snapshot.encode();
       await HomeWidget.saveWidgetData<String>('metapim.snapshot', encoded);
       final stored = await HomeWidget.getWidgetData<String>('metapim.snapshot');
@@ -191,6 +203,12 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
             return;
           }
           if (action != 'logout') return;
+          loggingOut = true;
+          while (refreshing) {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+          }
+          try {
+          await const MethodChannel('metapim/shared-group').invokeMethod<void>('clearSession');
           await _ConnectionScreenState.storage.delete(key: 'metapim.session');
           await controller.clearLocalStorage();
           await controller.clearCache();
@@ -198,6 +216,10 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
           await HomeWidget.saveWidgetData<String>('metapim.snapshot', null);
           await HomeWidget.updateWidget(iOSName: 'MetapiMWidget');
           if (context.mounted) Navigator.of(context).pop();
+          } catch (_) {
+            loggingOut = false;
+            if (mounted) setState(() => error = '登出未完成：无法清除共享凭据，请检查共享权限后重试');
+          }
         },
         itemBuilder: (_) => const [
           PopupMenuItem(value: 'refresh', child: Text('刷新')),
