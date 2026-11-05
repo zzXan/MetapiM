@@ -43,12 +43,12 @@ jobs:
           set -euo pipefail
           test -d build/ios/iphoneos/Runner.app/PlugIns/MetapiMWidget.appex
           python3 scripts/validate_bundle.py build/ios/iphoneos/Runner.app
+          rm -rf output
           mkdir -p output/Payload
           cp -R build/ios/iphoneos/Runner.app output/Payload/MetapiM.app
           cd output
           /usr/bin/zip -qry MetapiM-unsigned.ipa Payload
-          shasum -a 256 MetapiM-unsigned.ipa > SHA256SUMS
-          /usr/bin/zip -q MetapiM-iOS-unsigned.zip MetapiM-unsigned.ipa SHA256SUMS
+          /usr/bin/zip -q MetapiM-iOS-unsigned.zip MetapiM-unsigned.ipa
           unzip -t MetapiM-unsigned.ipa
           unzip -t MetapiM-iOS-unsigned.zip
           rm -rf Payload
