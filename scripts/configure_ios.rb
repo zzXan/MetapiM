@@ -14,6 +14,25 @@ FileUtils.mkdir_p(File.join(ios, 'MetapiMWidget'))
 FileUtils.cp(File.join(root, 'ios-support', 'MetapiMWidget.swift'), File.join(ios, 'MetapiMWidget', 'MetapiMWidget.swift'))
 ref = group.files.find { |f| f.path == 'MetapiMWidget/MetapiMWidget.swift' } || group.new_file('MetapiMWidget/MetapiMWidget.swift')
 widget.add_file_references([ref]) unless widget.source_build_phase.files_references.include?(ref)
+# Compile the resolver into both targets and the Flutter bridge only into Runner.
+runner_group = project.main_group.find_subpath('Runner', true)
+[['SharedGroup.swift', app, runner_group, 'Runner'],
+ ['SharedGroupPlugin.swift', app, runner_group, 'Runner'],
+ ['SharedGroup.swift', widget, group, 'MetapiMWidget']].each do |name, target, source_group, directory|
+ FileUtils.cp(File.join(root, 'ios-support', name), File.join(ios, directory, name))
+ reference = source_group.files.find { |f| File.basename(f.path.to_s) == name } || source_group.new_file(directory == 'Runner' ? name : "#{directory}/#{name}")
+ target.add_file_references([reference]) unless target.source_build_phase.files_references.include?(reference)
+end
+delegate_path = File.join(ios, 'Runner', 'AppDelegate.swift')
+delegate = File.read(delegate_path)
+unless delegate.include?('SharedGroupPlugin.register')
+ delegate.sub!(/GeneratedPluginRegistrant\.register\(with: ([\w.]+)\)/) do |line|
+  registry = Regexp.last_match(1)
+  line + "\n    if let registrar = #{registry}.registrar(forPlugin: \"SharedGroupPlugin\") {\n      SharedGroupPlugin.register(with: registrar)\n    }"
+ end
+ raise 'Flutter plugin registration hook missing' unless delegate.include?('SharedGroupPlugin.register')
+ File.write(delegate_path, delegate)
+end
 app.add_dependency(widget) unless app.dependencies.any? { |d| d.target == widget }
 phase = app.copy_files_build_phases.find { |p| p.name == 'Embed App Extensions' } || app.new_copy_files_build_phase('Embed App Extensions')
 phase.dst_subfolder_spec = '13'

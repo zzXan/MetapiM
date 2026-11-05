@@ -19,10 +19,10 @@ struct Provider: TimelineProvider {
         completion(Timeline(entries: [read()], policy: .after(.now.addingTimeInterval(1800))))
     }
     func read() -> Entry {
-        guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.zzxan.metapim") != nil else {
+        guard let group = SharedGroup.resolve() else {
             return Entry(date: .now, snapshot: nil, issue: "App Group 不可用，请检查重签共享权限")
         }
-        guard let text = UserDefaults(suiteName: "group.com.zzxan.metapim")?.string(forKey: "metapim.snapshot"),
+        guard let text = UserDefaults(suiteName: group)?.string(forKey: "metapim.snapshot"),
               let data = text.data(using: .utf8) else {
             return Entry(date: .now, snapshot: nil, issue: "没有共享快照，请在 App 刷新并查看错误提示")
         }

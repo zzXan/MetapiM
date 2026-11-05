@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:home_widget/home_widget.dart';
@@ -139,13 +140,18 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
       await controller.loadRequest(widget.server.uri, headers: {'Authorization': 'Bearer ${widget.token}', 'Cache-Control': 'no-cache'});
     } catch (_) { if (mounted) setState(() { error = '无法打开网页'; loading = false; }); }
   }
+  Future<void> configureSharedGroup() async {
+    final group = await const MethodChannel('metapim/shared-group').invokeMethod<String>('resolve');
+    if (group == null || group.isEmpty) throw StateError('签名缺少共享容器');
+    await HomeWidget.setAppGroupId(group);
+  }
   Future<void> refreshWidget() async {
     if (refreshing) return;
     refreshing = true;
     final client = MetapiClient(server: widget.server, token: widget.token);
     try {
       final snapshot = await client.loadWidgetSnapshot().timeout(const Duration(seconds: 30));
-      await HomeWidget.setAppGroupId('group.com.zzxan.metapim');
+      await configureSharedGroup();
       final encoded = snapshot.encode();
       await HomeWidget.saveWidgetData<String>('metapim.snapshot', encoded);
       final stored = await HomeWidget.getWidgetData<String>('metapim.snapshot');
@@ -188,7 +194,7 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
           await _ConnectionScreenState.storage.delete(key: 'metapim.session');
           await controller.clearLocalStorage();
           await controller.clearCache();
-          await HomeWidget.setAppGroupId('group.com.zzxan.metapim');
+          await configureSharedGroup();
           await HomeWidget.saveWidgetData<String>('metapim.snapshot', null);
           await HomeWidget.updateWidget(iOSName: 'MetapiMWidget');
           if (context.mounted) Navigator.of(context).pop();
