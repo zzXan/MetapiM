@@ -20,6 +20,10 @@ jobs:
           flutter create --platforms=ios --org com.zzxan --project-name metapi_m .
           # flutter create supplies a counter-app test unrelated to this app.
           rm -f test/widget_test.dart
+      - name: Configure Metapi logo
+        run: |
+          python3 -m pip install --break-system-packages cairosvg pillow
+          python3 scripts/configure_icon.py
       - name: Dependencies
         run: flutter pub get
       - name: Analyze and test
