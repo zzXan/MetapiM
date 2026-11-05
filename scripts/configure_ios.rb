@@ -18,6 +18,9 @@ widget.add_file_references([ref]) unless widget.source_build_phase.files_referen
 runner_group = project.main_group.find_subpath('Runner', true)
 [['SharedGroup.swift', app, runner_group, 'Runner'],
  ['SharedGroupPlugin.swift', app, runner_group, 'Runner'],
+ ['WidgetSession.swift', app, runner_group, 'Runner'],
+ ['WidgetSession.swift', widget, group, 'MetapiMWidget'],
+ ['WidgetNetwork.swift', widget, group, 'MetapiMWidget'],
  ['SharedGroup.swift', widget, group, 'MetapiMWidget']].each do |name, target, source_group, directory|
  FileUtils.cp(File.join(root, 'ios-support', name), File.join(ios, directory, name))
  reference = source_group.files.find { |f| File.basename(f.path.to_s) == name } || source_group.new_file(directory == 'Runner' ? name : "#{directory}/#{name}")
@@ -51,6 +54,8 @@ entitlements = { 'com.apple.security.application-groups' => ['group.com.zzxan.me
 Xcodeproj::Plist.write_to_path(entitlements, File.join(ios, 'Runner', 'Runner.entitlements'))
 Xcodeproj::Plist.write_to_path(entitlements, File.join(ios, 'MetapiMWidget', 'Widget.entitlements'))
 Xcodeproj::Plist.write_to_path({
+ 'NSAppTransportSecurity' => { 'NSAllowsArbitraryLoads' => true },
+ 'NSLocalNetworkUsageDescription' => '后台读取你配置的 Metapi 服务器数据。',
  'CFBundleName' => 'MetapiMWidget',
  'CFBundleDisplayName' => 'MetapiM', 'CFBundleIdentifier' => '$(PRODUCT_BUNDLE_IDENTIFIER)',
  'CFBundleExecutable' => '$(EXECUTABLE_NAME)', 'CFBundlePackageType' => 'XPC!',
