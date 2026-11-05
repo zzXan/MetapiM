@@ -38,6 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           test -d build/ios/iphoneos/Runner.app/PlugIns/MetapiMWidget.appex
+          python3 scripts/validate_bundle.py build/ios/iphoneos/Runner.app
           mkdir -p output/Payload
           cp -R build/ios/iphoneos/Runner.app output/Payload/MetapiM.app
           cd output
