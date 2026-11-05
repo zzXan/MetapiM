@@ -65,9 +65,10 @@ plist['NSAppTransportSecurity'] = { 'NSAllowsArbitraryLoads' => true }
 Xcodeproj::Plist.write_to_path(plist, info)
 project.save
 verified = Xcodeproj::Project.open(File.join(ios, 'Runner.xcodeproj'))
-widget_phases = verified.targets.find { |t| t.name == 'Runner' }.build_phases
-copy_phase = widget_phases.find { |p| p.name == 'Embed App Extensions' }
-thin_phase = widget_phases.find { |p| p.respond_to?(:name) && p.name == 'Thin Binary' }
+verified_runner = verified.targets.find { |t| t.name == 'Runner' }
+widget_phases = verified_runner.build_phases
+copy_phase = verified_runner.copy_files_build_phases.find { |p| p.name == 'Embed App Extensions' }
+thin_phase = verified_runner.shell_script_build_phases.find { |p| p.name == 'Thin Binary' }
 if copy_phase && thin_phase && widget_phases.index(copy_phase) >= widget_phases.index(thin_phase)
  raise 'Embed App Extensions must precede Thin Binary'
 end
