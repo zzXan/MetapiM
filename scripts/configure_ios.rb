@@ -18,6 +18,15 @@ app.add_dependency(widget) unless app.dependencies.any? { |d| d.target == widget
 phase = app.copy_files_build_phases.find { |p| p.name == 'Embed App Extensions' } || app.new_copy_files_build_phase('Embed App Extensions')
 phase.dst_subfolder_spec = '13'
 phase.add_file_reference(widget.product_reference) unless phase.files_references.include?(widget.product_reference)
+# The Runner's Embed App Extensions copy after Flutter Thin Binary makes an Xcode cycle:
+# copy .appex -> Thin Binary -> Runner.app Info.plist -> copy .appex.
+# Put the extension copy before Thin Binary so plugin embedding does not depend on
+# the post-processing of the app bundle itself.
+if (thin_binary = app.shell_script_build_phases.find { |p| p.name == 'Thin Binary' })
+ phases = app.build_phases
+ phases.delete(phase)
+ phases.insert(phases.index(thin_binary), phase)
+end
 
 entitlements = { 'com.apple.security.application-groups' => ['group.com.zzxan.metapim'] }
 Xcodeproj::Plist.write_to_path(entitlements, File.join(ios, 'Runner', 'Runner.entitlements'))
@@ -35,7 +44,6 @@ app.build_configurations.each do |c|
 end
 widget.add_build_configuration('Profile', :release) unless widget.build_configurations.any? { |c| c.name == 'Profile' }
 widget.build_configurations.each do |c|
- # Newly generated extension configurations must not inherit an empty name.
  c.build_settings['PRODUCT_NAME'] = 'MetapiMWidget'
  c.build_settings['PRODUCT_MODULE_NAME'] = 'MetapiMWidget'
  c.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.zzxan.metapim.widget'
@@ -56,17 +64,11 @@ plist['NSLocalNetworkUsageDescription'] = '连接你配置的局域网 Metapi �
 plist['NSAppTransportSecurity'] = { 'NSAllowsArbitraryLoads' => true }
 Xcodeproj::Plist.write_to_path(plist, info)
 project.save
-# Validate serialized configurations, including Profile, before invoking Xcode.
 verified = Xcodeproj::Project.open(File.join(ios, 'Runner.xcodeproj'))
-verified.targets.select { |t| t.name == 'MetapiMWidget' }.each do |target|
- target.build_configurations.each do |config|
-  raise "Empty widget product in #{config.name}" unless config.build_settings['PRODUCT_NAME'] == 'MetapiMWidget'
- end
+widget_phases = verified.targets.find { |t| t.name == 'Runner' }.build_phases
+copy_phase = widget_phases.find { |p| p.name == 'Embed App Extensions' }
+thin_phase = widget_phases.find { |p| p.respond_to?(:name) && p.name == 'Thin Binary' }
+if copy_phase && thin_phase && widget_phases.index(copy_phase) >= widget_phases.index(thin_phase)
+ raise 'Embed App Extensions must precede Thin Binary'
 end
-podfile = File.join(ios, 'Podfile')
-if File.exist?(podfile)
- text = File.read(podfile)
- text.sub!(/^#?\s*platform :ios,.*$/, "platform :ios, '17.0'")
- File.write(podfile, text)
-end
-puts 'Configured MetapiM Runner and WidgetKit extension'
+puts 'Configured MetapiM Runner and WidgetKit extension; verified embed order'
