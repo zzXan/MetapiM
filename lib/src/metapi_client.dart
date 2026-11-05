@@ -23,12 +23,16 @@ class MetapiClient {
     ]);
     final accountsPayload = jsonDecode(utf8.decode(responses[0]));
     final logsPayload = jsonDecode(utf8.decode(responses[1]));
-    if (accountsPayload is! Map || accountsPayload['accounts'] is! List ||
-        logsPayload is! Map || logsPayload['items'] is! List) {
+    // Accept list and wrapped-list response shapes without inventing rows.
+    final accountRows = accountsPayload is List ? accountsPayload
+        : accountsPayload is Map ? accountsPayload['accounts'] : null;
+    final logRows = logsPayload is List ? logsPayload
+        : logsPayload is Map ? (logsPayload['items'] ?? logsPayload['logs']) : null;
+    if (accountRows is! List || logRows is! List) {
       throw const FormatException('服务器返回的数据格式不正确');
     }
-    final accounts = (accountsPayload['accounts'] as List).whereType<Map>().map((m) => Map<String,dynamic>.from(m)).toList();
-    final logs = (logsPayload['items'] as List).whereType<Map>().map((m) => Map<String,dynamic>.from(m)).toList();
+    final accounts = accountRows.whereType<Map>().map((m) => Map<String,dynamic>.from(m)).toList();
+    final logs = logRows.whereType<Map>().map((m) => Map<String,dynamic>.from(m)).toList();
     return WidgetContract.snapshot(accounts: accounts, logs: logs);
   }
 

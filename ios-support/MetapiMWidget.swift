@@ -11,7 +11,7 @@ struct Snapshot: Decodable {
     let balances: [Balance]
     let recentCalls: [Call]
 }
-struct Entry: TimelineEntry { let date: Date; let snapshot: Snapshot? }
+struct Entry: TimelineEntry { let date: Date; let snapshot: Snapshot?; var issue: String? = nil }
 struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> Entry { Entry(date: .now, snapshot: nil) }
     func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) { completion(read()) }
@@ -19,9 +19,18 @@ struct Provider: TimelineProvider {
         completion(Timeline(entries: [read()], policy: .after(.now.addingTimeInterval(1800))))
     }
     func read() -> Entry {
-        let text = UserDefaults(suiteName: "group.com.zzxan.metapim")?.string(forKey: "metapim.snapshot")
-        let snapshot = text?.data(using: .utf8).flatMap { try? JSONDecoder().decode(Snapshot.self, from: $0) }
-        return Entry(date: .now, snapshot: snapshot)
+        guard FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.zzxan.metapim") != nil else {
+            return Entry(date: .now, snapshot: nil, issue: "App Group 不可用，请检查重签共享权限")
+        }
+        guard let text = UserDefaults(suiteName: "group.com.zzxan.metapim")?.string(forKey: "metapim.snapshot"),
+              let data = text.data(using: .utf8) else {
+            return Entry(date: .now, snapshot: nil, issue: "没有共享快照，请在 App 刷新并查看错误提示")
+        }
+        do {
+            return Entry(date: .now, snapshot: try JSONDecoder().decode(Snapshot.self, from: data))
+        } catch {
+            return Entry(date: .now, snapshot: nil, issue: "共享快照解析失败，请更新 App 后重新刷新")
+        }
     }
 }
 struct Summary: View {
@@ -44,7 +53,7 @@ struct Summary: View {
                 }
                 Spacer(minLength: 0)
                 Text("快照：\(snapshot.generatedAt)").font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
-            } else { Text("打开 MetapiM 登录并刷新").font(.caption); Spacer() }
+            } else { Text(entry.issue ?? "打开 MetapiM 登录并刷新").font(.caption); Spacer() }
         }.containerBackground(.background, for: .widget)
     }
 }

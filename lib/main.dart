@@ -146,10 +146,19 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
     try {
       final snapshot = await client.loadWidgetSnapshot().timeout(const Duration(seconds: 30));
       await HomeWidget.setAppGroupId('group.com.zzxan.metapim');
-      await HomeWidget.saveWidgetData<String>('metapim.snapshot', snapshot.encode());
+      final encoded = snapshot.encode();
+      await HomeWidget.saveWidgetData<String>('metapim.snapshot', encoded);
+      final stored = await HomeWidget.getWidgetData<String>('metapim.snapshot');
+      if (stored != encoded) throw StateError('共享缓存写入后校验失败');
       await HomeWidget.updateWidget(iOSName: 'MetapiMWidget');
-    } catch (_) {
-      // Keep last successful snapshot; never replace it with fabricated zeros.
+    } catch (e) {
+      // Preserve the last successful snapshot and expose a safe error category.
+      final reason = e is MetapiAuthException ? '认证失败'
+          : e is FormatException ? '接口数据格式不兼容'
+          : e is TimeoutException ? '请求超时'
+          : e is HttpException ? e.message
+          : '网络或 App Group 共享缓存不可用（SideStore 重签后请检查共享权限）';
+      if (mounted) setState(() => error = 'Widget 刷新失败：$reason');
     } finally { client.close(); refreshing = false; }
   }
   @override
