@@ -35,6 +35,9 @@ app.build_configurations.each do |c|
 end
 widget.add_build_configuration('Profile', :release) unless widget.build_configurations.any? { |c| c.name == 'Profile' }
 widget.build_configurations.each do |c|
+ # Newly generated extension configurations must not inherit an empty name.
+ c.build_settings['PRODUCT_NAME'] = 'MetapiMWidget'
+ c.build_settings['PRODUCT_MODULE_NAME'] = 'MetapiMWidget'
  c.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = 'com.zzxan.metapim.widget'
  c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
  c.build_settings['SWIFT_VERSION'] = '5.0'
@@ -53,6 +56,13 @@ plist['NSLocalNetworkUsageDescription'] = '连接你配置的局域网 Metapi �
 plist['NSAppTransportSecurity'] = { 'NSAllowsArbitraryLoads' => true }
 Xcodeproj::Plist.write_to_path(plist, info)
 project.save
+# Validate serialized configurations, including Profile, before invoking Xcode.
+verified = Xcodeproj::Project.open(File.join(ios, 'Runner.xcodeproj'))
+verified.targets.select { |t| t.name == 'MetapiMWidget' }.each do |target|
+ target.build_configurations.each do |config|
+  raise "Empty widget product in #{config.name}" unless config.build_settings['PRODUCT_NAME'] == 'MetapiMWidget'
+ end
+end
 podfile = File.join(ios, 'Podfile')
 if File.exist?(podfile)
  text = File.read(podfile)
