@@ -1,9 +1,35 @@
 import SwiftUI
 import WidgetKit
+import AppIntents
 
-struct Snapshot: Decodable {
-    struct Balance: Decodable, Identifiable { let id: Int; let name: String; let balance: Double }
-    struct Call: Decodable, Identifiable {
+struct RefreshMetapiWidgetIntent: AppIntent {
+    static var title: LocalizedStringResource = "刷新 MetapiM"
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult {
+        guard let group = SharedGroup.resolve(),
+              let credentials = WidgetSession.read(group: group) else {
+            throw NSError(domain: "MetapiM.Widget", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "无法读取共享连接，请在 MetapiM 中检查共享权限"])
+        }
+        let snapshot = try await WidgetNetwork.fetch(credentials)
+        guard let current = WidgetSession.read(group: group),
+              current.server == credentials.server, current.token == credentials.token else {
+            return .result()
+        }
+        let data = try JSONEncoder().encode(snapshot)
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        UserDefaults(suiteName: group)?.set(text, forKey: "metapim.snapshot")
+        WidgetCenter.shared.reloadTimelines(ofKind: "MetapiMWidget")
+        return .result()
+    }
+}
+
+struct Snapshot: Codable {
+    struct Balance: Codable, Identifiable { let id: Int; let name: String; let balance: Double }
+    struct Call: Codable, Identifiable {
         let id: Int; let vendor: String; let inputTokens: Int; let outputTokens: Int
         let cacheHitRate: Double?; let estimatedCost: Double?
     }
@@ -16,7 +42,25 @@ struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> Entry { Entry(date: .now, snapshot: nil) }
     func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) { completion(read()) }
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
-        completion(Timeline(entries: [read()], policy: .after(.now.addingTimeInterval(1800))))
+        Task {
+            var entry = read()
+            if let group = SharedGroup.resolve(), let credentials = WidgetSession.read(group: group) {
+                do {
+                    let snapshot = try await WidgetNetwork.fetch(credentials)
+                    // Discard a response if logout or a connection change happened in flight.
+                    if let current = WidgetSession.read(group: group),
+                       current.server == credentials.server && current.token == credentials.token {
+                        if let data = try? JSONEncoder().encode(snapshot), let text = String(data: data, encoding: .utf8) {
+                            UserDefaults(suiteName: group)?.set(text, forKey: "metapim.snapshot")
+                        }
+                        entry = Entry(date: .now, snapshot: snapshot)
+                    } else { entry = Entry(date: .now, snapshot: nil, issue: "已登出") }
+                } catch {
+                    entry.issue = "刷新失败，保留上次快照"
+                }
+            }
+            completion(Timeline(entries: [entry], policy: .after(.now.addingTimeInterval(1800))))
+        }
     }
     func read() -> Entry {
         guard let group = SharedGroup.resolve() else {
@@ -38,18 +82,37 @@ struct Summary: View {
     @Environment(\.widgetFamily) var family
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("MetapiM").font(.headline)
-            if let snapshot = entry.snapshot {
-                Text("供应商余额").font(.caption).foregroundStyle(.secondary)
-                ForEach(snapshot.balances.prefix(family == .systemLarge ? 4 : 2)) { b in
-                    HStack { Text(b.name).lineLimit(1); Spacer(); Text(String(format: "$%.2f", b.balance)) }.font(.caption)
+            HStack {
+                Text("MetapiM").font(.headline)
+                Spacer()
+                Button(intent: RefreshMetapiWidgetIntent()) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
                 }
-                Divider()
-                ForEach(snapshot.recentCalls.prefix(family == .systemLarge ? 4 : 1)) { c in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack { Text(c.vendor).lineLimit(1); Spacer(); Text(c.estimatedCost.map { String(format: "$%.6f", $0) } ?? "-") }
-                        Text("入 \(c.inputTokens) / 出 \(c.outputTokens) · 缓存 \(c.cacheHitRate.map { String(format: "%.1f%%", $0 * 100) } ?? "-")").lineLimit(1).minimumScaleFactor(0.7)
-                    }.font(.caption2)
+                .buttonStyle(.plain)
+                .accessibilityLabel("刷新余额和调用记录")
+            }
+            if let snapshot = entry.snapshot {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(snapshot.balances.prefix(family == .systemLarge ? 8 : 3)) { b in
+                            HStack { Text(b.name).lineLimit(1); Spacer(minLength: 2); Text(String(format: "$%.2f", b.balance)) }.font(.caption)
+                        }
+                        if snapshot.balances.isEmpty { Text("暂无余额").font(.caption) }
+                    }.frame(maxWidth: .infinity, alignment: .topLeading)
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(snapshot.recentCalls.prefix(family == .systemLarge ? 6 : 2)) { c in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack { Text(c.vendor).lineLimit(1); Spacer(minLength: 2); Text(c.estimatedCost.map { String(format: "$%.6f", $0) } ?? "-") }
+                                Text("\(c.inputTokens) / \(c.outputTokens) · \(c.cacheHitRate.map { String(format: "%.1f%%", $0 * 100) } ?? "-")")
+                                    .lineLimit(1).minimumScaleFactor(0.7)
+                            }.font(.caption2)
+                        }
+                        if snapshot.recentCalls.isEmpty { Text("暂无调用").font(.caption) }
+                    }.frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 Spacer(minLength: 0)
                 Text("快照：\(snapshot.generatedAt)").font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
