@@ -47,10 +47,20 @@ enum WidgetNetwork {
                   let name = site["name"] as? String, !name.isEmpty else { continue }
             let previous = balances[name]
             let id = (row["id"] as? NSNumber)?.intValue ?? 0
-            balances[name] = (min(previous?.0 ?? id, id), (previous?.1 ?? 0) + ((row["balance"] as? NSNumber)?.doubleValue ?? 0))
+            let previousID: Int = previous?.0 ?? id
+            let previousBalance: Double = previous?.1 ?? 0.0
+            let rowBalance: Double = (row["balance"] as? NSNumber)?.doubleValue ?? 0.0
+            balances[name] = (min(previousID, id), previousBalance + rowBalance)
         }
-        let ranked = balances.map { Snapshot.Balance(id: $0.value.0, name: $0.key, balance: $0.value.1) }
-            .sorted { $0.balance == $1.balance ? $0.name.lowercased() < $1.name.lowercased() : $0.balance > $1.balance }
+        var ranked: [Snapshot.Balance] = []
+        for (name, value) in balances {
+            let balance = Snapshot.Balance(id: value.0, name: name, balance: value.1)
+            ranked.append(balance)
+        }
+        ranked.sort { (left: Snapshot.Balance, right: Snapshot.Balance) -> Bool in
+            if left.balance != right.balance { return left.balance > right.balance }
+            return left.name.lowercased() < right.name.lowercased()
+        }
         // The API orders createdAt descending, then id descending.
         let calls = logs.map { row -> Snapshot.Call in
             let prompt = (row["promptTokens"] as? NSNumber)?.intValue ?? 0
