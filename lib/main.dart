@@ -162,17 +162,34 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
   void dispose() { WidgetsBinding.instance.removeObserver(this); super.dispose(); }
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('MetapiM'), actions: [
-      IconButton(tooltip: '刷新', icon: const Icon(Icons.refresh), onPressed: () { unawaited(controller.reload()); unawaited(refreshWidget()); }),
-      IconButton(tooltip: '退出并清除连接', icon: const Icon(Icons.logout), onPressed: () async {
-        await _ConnectionScreenState.storage.delete(key: 'metapim.session');
-        await controller.clearLocalStorage(); await controller.clearCache();
-        await HomeWidget.setAppGroupId('group.com.zzxan.metapim');
-        await HomeWidget.saveWidgetData<String>('metapim.snapshot', null);
-        await HomeWidget.updateWidget(iOSName: 'MetapiMWidget');
-        if (context.mounted) Navigator.of(context).pop();
-      }),
-    ]),
+    floatingActionButton: Material(
+      elevation: 3,
+      shape: const CircleBorder(),
+      color: Theme.of(context).colorScheme.surface,
+      child: PopupMenuButton<String>(
+        tooltip: '操作',
+        icon: const Icon(Icons.settings_outlined, size: 22),
+        onSelected: (action) async {
+          if (action == 'refresh') {
+            unawaited(controller.reload());
+            unawaited(refreshWidget());
+            return;
+          }
+          if (action != 'logout') return;
+          await _ConnectionScreenState.storage.delete(key: 'metapim.session');
+          await controller.clearLocalStorage();
+          await controller.clearCache();
+          await HomeWidget.setAppGroupId('group.com.zzxan.metapim');
+          await HomeWidget.saveWidgetData<String>('metapim.snapshot', null);
+          await HomeWidget.updateWidget(iOSName: 'MetapiMWidget');
+          if (context.mounted) Navigator.of(context).pop();
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(value: 'refresh', child: Text('刷新')),
+          PopupMenuItem(value: 'logout', child: Text('登出')),
+        ],
+      ),
+    ),
     body: SafeArea(child: Column(children: [
       if (loading) const LinearProgressIndicator(),
       if (error != null) MaterialBanner(content: Text(error!), actions: [TextButton(onPressed: open, child: const Text('重试'))]),
