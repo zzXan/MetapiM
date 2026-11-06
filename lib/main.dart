@@ -188,7 +188,9 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
   @override
   void dispose() { WidgetsBinding.instance.removeObserver(this); super.dispose(); }
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    child: Scaffold(
     floatingActionButton: Material(
       elevation: 3,
       shape: const CircleBorder(),
@@ -232,5 +234,6 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
       if (error != null) MaterialBanner(content: Text(error!), actions: [TextButton(onPressed: open, child: const Text('重试'))]),
       Expanded(child: WebViewWidget(controller: controller)),
     ])),
+    ),
   );
 }
