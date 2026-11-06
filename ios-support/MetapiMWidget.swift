@@ -80,6 +80,21 @@ struct Provider: TimelineProvider {
 struct Summary: View {
     let entry: Entry
     @Environment(\.widgetFamily) var family
+    private func localRefreshTime(_ value: String) -> String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = parser.date(from: value)
+        if date == nil {
+            parser.formatOptions = [.withInternetDateTime]
+            date = parser.date(from: value)
+        }
+        guard let date = date else { return "-" }
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.timeZone = .autoupdatingCurrent
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: date)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
@@ -115,7 +130,7 @@ struct Summary: View {
                     }.frame(maxWidth: .infinity, alignment: .topLeading)
                 }
                 Spacer(minLength: 0)
-                Text("快照：\(snapshot.generatedAt)").font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
+                Text("刷新：\(localRefreshTime(snapshot.generatedAt))").font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1)
             } else { Text(entry.issue ?? "打开 MetapiM 登录并刷新").font(.caption); Spacer() }
         }.containerBackground(.background, for: .widget)
     }
