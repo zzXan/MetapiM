@@ -110,6 +110,7 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
     super.initState(); WidgetsBinding.instance.addObserver(this);
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..enableZoom(false)
       ..setNavigationDelegate(NavigationDelegate(
         onNavigationRequest: (request) {
           final target = Uri.tryParse(request.url);
@@ -118,21 +119,25 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
         onPageStarted: (_) { if (mounted) setState(() { loading = true; error = null; }); },
         onPageFinished: (url) async {
           final target = Uri.tryParse(url);
-          if (!sessionInjected && target != null && widget.server.contains(target)) {
-            sessionInjected = true;
-            final token = jsonEncode(widget.token);
-            final expiry = DateTime.now().add(const Duration(hours: 12)).millisecondsSinceEpoch;
-            await controller.runJavaScript('''
-              (() => {
-                const token = $token;
-                if (localStorage.getItem('auth_token') !== token ||
-                    Number(localStorage.getItem('auth_token_expires_at') || 0) <= Date.now()) {
-                  localStorage.setItem('auth_token', token);
-                  localStorage.setItem('auth_token_expires_at', '$expiry');
-                  location.reload();
-                }
-              })();
-            ''');
+          if (target != null && widget.server.contains(target)) {
+            _preventZoom = false;
+            await _lockPageScale();
+            if (!sessionInjected) {
+              sessionInjected = true;
+              final token = jsonEncode(widget.token);
+              final expiry = DateTime.now().add(const Duration(hours: 12)).millisecondsSinceEpoch;
+              await controller.runJavaScript('''
+                (() => {
+                  const token = $token;
+                  if (localStorage.getItem('auth_token') !== token ||
+                      Number(localStorage.getItem('auth_token_expires_at') || 0) <= Date.now()) {
+                    localStorage.setItem('auth_token', token);
+                    localStorage.setItem('auth_token_expires_at', '$expiry');
+                    location.reload();
+                  }
+                })();
+              ''');
+            }
           }
           if (mounted) setState(() => loading = false);
         },
@@ -179,10 +184,38 @@ class _ServerScreenState extends State<ServerScreen> with WidgetsBindingObserver
       if (mounted) setState(() => error = 'Widget 刷新失败：$reason');
     } finally { client.close(); refreshing = false; }
   }
+
+  bool _preventZoom = false;
+  Future<void> _lockPageScale() async {
+    if (_preventZoom) return;
+    _preventZoom = true;
+    try {
+      await controller.runJavaScript('''
+        (() => {
+          const viewport = document.querySelector('meta[name="viewport"]');
+          if (viewport) {
+            const content = viewport.getAttribute('content') || '';
+            const parts = content.split(',').map(v => v.trim()).filter(Boolean)
+              .filter(v => !/^maximum-scale=/i.test(v) && !/^user-scalable=/i.test(v));
+            parts.push('maximum-scale=1', 'user-scalable=no');
+            viewport.setAttribute('content', parts.join(', '));
+          }
+          document.documentElement.style.setProperty('zoom', '1');
+          document.body.style.setProperty('zoom', '1');
+        })();
+      ''');
+    } catch (_) {
+      _preventZoom = false;
+    }
+  }
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && DateTime.now().difference(lastForeground).inSeconds >= 15) {
-      lastForeground = DateTime.now(); unawaited(controller.reload()); unawaited(refreshWidget());
+      lastForeground = DateTime.now();
+      _preventZoom = false;
+      unawaited(_lockPageScale());
+      unawaited(controller.reload());
+      unawaited(refreshWidget());
     }
   }
   @override
